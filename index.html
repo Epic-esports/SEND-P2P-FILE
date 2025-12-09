@@ -23,7 +23,8 @@ h2{margin-bottom:20px;}
 <h2>📂 P2P File Transfer</h2>
 
 <button class="btn" onclick="selectMode('receive')">📥 Receive File</button>
-<button class="btn" onclick="selectMode('send')">📤 Send File</button>
+<button class="btn" onclick="requestCameraPermission()">📤 Send File</button>
+
 
 <div class="qr-box" id="qrBox">
     <p>Scan this QR code from your phone</p>
@@ -68,6 +69,17 @@ function startReceive(){
 
     connectWS();
     ws.onopen = ()=> ws.send(JSON.stringify({type:'join', session:sessionId, role:'receiver'}));
+}
+    function requestCameraPermission() {
+    // Ask for camera permission explicitly
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            stream.getTracks().forEach(track => track.stop()); // stop it immediately
+            startSendMode(); // now safe to start QR scanner
+        })
+        .catch(err => {
+            alert("Camera access is required to scan QR code: " + err);
+        });
 }
 
 // ---- SEND MODE (PHONE) ----
