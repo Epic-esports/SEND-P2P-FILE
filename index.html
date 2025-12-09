@@ -25,7 +25,6 @@ h2{margin-bottom:20px;}
 <button class="btn" onclick="selectMode('receive')">📥 Receive File</button>
 <button class="btn" onclick="requestCameraPermission()">📤 Send File</button>
 
-
 <div class="qr-box" id="qrBox">
     <p>Scan this QR code from your phone</p>
     <canvas id="qrCode"></canvas>
@@ -50,7 +49,16 @@ let sessionId="", mode="";
 function selectMode(m){
     mode=m;
     if(mode==='receive') startReceive();
-    else startSendMode();
+}
+
+// ---- CAMERA PERMISSION & SEND MODE ----
+function requestCameraPermission() {
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            stream.getTracks().forEach(track => track.stop());
+            startSendMode();
+        })
+        .catch(err => alert("Camera access is required to scan QR code: " + err));
 }
 
 // ---- RECEIVE MODE (PC) ----
@@ -70,17 +78,6 @@ function startReceive(){
     connectWS();
     ws.onopen = ()=> ws.send(JSON.stringify({type:'join', session:sessionId, role:'receiver'}));
 }
-    function requestCameraPermission() {
-    // Ask for camera permission explicitly
-    navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-            stream.getTracks().forEach(track => track.stop()); // stop it immediately
-            startSendMode(); // now safe to start QR scanner
-        })
-        .catch(err => {
-            alert("Camera access is required to scan QR code: " + err);
-        });
-}
 
 // ---- SEND MODE (PHONE) ----
 function startSendMode(){
@@ -91,7 +88,6 @@ function startSendMode(){
     dataChannel = pc.createDataChannel("file-transfer");
     dataChannel.binaryType="arraybuffer";
     dataChannel.onopen = ()=>console.log("Data channel open");
-    dataChannel.onclose = ()=>console.log("Data channel closed");
 
     pc.onicecandidate = e=>{ if(e.candidate) ws.send(JSON.stringify({type:'ice', session:sessionId, candidate:e.candidate})); };
 
@@ -104,16 +100,18 @@ function startSendMode(){
     };
 
     const html5QrcodeScanner = new Html5Qrcode("reader");
-    html5QrcodeScanner.start({facingMode:"environment"},{fps:10,qrbox:250}, onScanSuccess);
-
-    function onScanSuccess(decodedText){
-        sessionId=decodedText;
-        document.getElementById("status").innerText="Scanned session: "+sessionId;
-        ws.onopen = ()=> ws.send(JSON.stringify({type:'join', session:sessionId, role:'sender'}));
-        createOffer();
-        html5QrcodeScanner.clear();
-        document.getElementById("fileInput").style.display="block";
-    }
+    html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        decodedText => {
+            sessionId=decodedText;
+            document.getElementById("status").innerText="Scanned session: "+sessionId;
+            ws.onopen = ()=> ws.send(JSON.stringify({type:'join', session:sessionId, role:'sender'}));
+            createOffer();
+            html5QrcodeScanner.clear();
+            document.getElementById("fileInput").style.display="block";
+        }
+    ).catch(err => console.error("QR scanner start failed:", err));
 }
 
 // ---- SIGNALING ----
