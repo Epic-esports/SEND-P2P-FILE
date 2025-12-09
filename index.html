@@ -33,6 +33,7 @@ h2{margin-bottom:20px;}
 <div id="reader"></div>
 <input id="manualSession" placeholder="Enter session ID" style="display:none;margin-top:10px;padding:10px;border-radius:8px;border:1px solid #333;background:#0f1115;color:white;width:100%;"/>
 <button class="btn" id="joinBtn" style="display:none;">Join Session</button>
+<button class="btn" id="retryCamera" style="display:none;">Retry Camera</button>
 <div id="status"></div>
 <input type="file" id="fileInput">
 
@@ -44,6 +45,7 @@ h2{margin-bottom:20px;}
 
 <script>
 let pc, dataChannel, ws;
+let scanner;
 let receiveBuffer=[], receivedSize=0, expectedSize=0;
 let sessionId="", mode="";
 
@@ -97,23 +99,43 @@ function startSendMode(){
     };
 
     // start QR scanner
-    const html5QrcodeScanner = new Html5Qrcode("reader");
-    html5QrcodeScanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        decodedText => {
-            sessionId=decodedText;
-            document.getElementById("status").innerText="Scanned session: "+sessionId;
-            ws.onopen = ()=> ws.send(JSON.stringify({type:'join', session:sessionId, role:'sender'}));
-            createOffer();
-            html5QrcodeScanner.clear();
-            document.getElementById("fileInput").style.display="block";
-        }
-    ).catch(err => {
+    scanner = new Html5Qrcode("reader");
+    function beginScan(){
+        Html5Qrcode.getCameras().then(cameras=>{
+            if(cameras && cameras.length){
+                const back = cameras.find(c=>/back|rear|environment/i.test(c.label)) || cameras[cameras.length-1];
+                scanner.start(back.id, { fps:10, qrbox:250 }, decodedText=>{
+                    sessionId=decodedText;
+                    document.getElementById("status").innerText="Scanned session: "+sessionId;
+                    ws.onopen = ()=> ws.send(JSON.stringify({type:'join', session:sessionId, role:'sender'}));
+                    createOffer();
+                    scanner.stop().then(()=>scanner.clear());
+                    document.getElementById("fileInput").style.display="block";
+                    document.getElementById("manualSession").style.display="none";
+                    document.getElementById("joinBtn").style.display="none";
+                    document.getElementById("retryCamera").style.display="none";
+                }).catch(handleScanError);
+            } else {
+                scanner.start({ facingMode:"environment" }, { fps:10, qrbox:250 }, decodedText=>{
+                    sessionId=decodedText;
+                    document.getElementById("status").innerText="Scanned session: "+sessionId;
+                    ws.onopen = ()=> ws.send(JSON.stringify({type:'join', session:sessionId, role:'sender'}));
+                    createOffer();
+                    scanner.stop().then(()=>scanner.clear());
+                    document.getElementById("fileInput").style.display="block";
+                    document.getElementById("manualSession").style.display="none";
+                    document.getElementById("joinBtn").style.display="none";
+                    document.getElementById("retryCamera").style.display="none";
+                }).catch(handleScanError);
+            }
+        }).catch(handleScanError);
+    }
+    function handleScanError(err){
         console.error("QR scanner start failed:", err);
-        document.getElementById("status").innerText = "Camera permission blocked. Enter session ID manually.";
+        document.getElementById("status").innerText = "Camera blocked or unavailable. Enter session ID or retry.";
         document.getElementById("manualSession").style.display="block";
         document.getElementById("joinBtn").style.display="block";
+        document.getElementById("retryCamera").style.display="block";
         document.getElementById("joinBtn").onclick = ()=>{
             const val = document.getElementById("manualSession").value.trim();
             if(!val) return;
@@ -127,7 +149,12 @@ function startSendMode(){
             createOffer();
             document.getElementById("fileInput").style.display="block";
         };
-    });
+        document.getElementById("retryCamera").onclick = ()=>{
+            document.getElementById("status").innerText = "Trying to open camera...";
+            beginScan();
+        };
+    }
+    beginScan();
 }
 
 // ---- SIGNALING ----
