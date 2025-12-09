@@ -31,6 +31,8 @@ h2{margin-bottom:20px;}
 </div>
 
 <div id="reader"></div>
+<input id="manualSession" placeholder="Enter session ID" style="display:none;margin-top:10px;padding:10px;border-radius:8px;border:1px solid #333;background:#0f1115;color:white;width:100%;"/>
+<button class="btn" id="joinBtn" style="display:none;">Join Session</button>
 <div id="status"></div>
 <input type="file" id="fileInput">
 
@@ -53,12 +55,7 @@ function selectMode(m){
 
 // ---- CAMERA PERMISSION & SEND MODE ----
 function requestCameraPermission() {
-    navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-            stream.getTracks().forEach(track => track.stop());
-            startSendMode();
-        })
-        .catch(err => alert("Camera access is required to scan QR code: " + err));
+    startSendMode();
 }
 
 // ---- RECEIVE MODE (PC) ----
@@ -112,7 +109,25 @@ function startSendMode(){
             html5QrcodeScanner.clear();
             document.getElementById("fileInput").style.display="block";
         }
-    ).catch(err => console.error("QR scanner start failed:", err));
+    ).catch(err => {
+        console.error("QR scanner start failed:", err);
+        document.getElementById("status").innerText = "Camera permission blocked. Enter session ID manually.";
+        document.getElementById("manualSession").style.display="block";
+        document.getElementById("joinBtn").style.display="block";
+        document.getElementById("joinBtn").onclick = ()=>{
+            const val = document.getElementById("manualSession").value.trim();
+            if(!val) return;
+            sessionId = val;
+            document.getElementById("status").innerText = "Joining session: "+sessionId;
+            if(ws.readyState===1){
+                ws.send(JSON.stringify({type:'join', session:sessionId, role:'sender'}));
+            } else {
+                ws.onopen = ()=> ws.send(JSON.stringify({type:'join', session:sessionId, role:'sender'}));
+            }
+            createOffer();
+            document.getElementById("fileInput").style.display="block";
+        };
+    });
 }
 
 // ---- SIGNALING ----
